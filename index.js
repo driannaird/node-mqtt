@@ -1,5 +1,10 @@
 import mqtt from "mqtt";
 import dotenv from "dotenv";
+import express from "express";
+import { Server } from "socket.io";
+import cors from "cors";
+import helmet from "helmet";
+import http from "http";
 
 dotenv.config();
 
@@ -8,6 +13,16 @@ const topic = process.env.MQTT_TOPIC || "drian/learn/#";
 const clientId = process.env.MQTT_CLIENT_ID || `node-sub-${Math.random().toString(16).slice(2)}`;
 const qos = Number(process.env.MQTT_QOS || 1);
 const clean = process.env.MQTT_CLEAN === "false" ? false : true;
+
+const app = express();
+app.use(cors());
+app.use(helmet());
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+io.on("connection", (socket) => {
+    socket.emit("occupancy:snapshot", Array.from(lastState, ([deviceId, v]) => ({ deviceId, ...v })));
+})
 
 const client = mqtt.connect(url, {
     clientId,
@@ -25,12 +40,10 @@ client.on("connect", () => {
 })
 
 client.on("message", (t, buf, pkt) => {
-  const text = buf.toString();
-  let obj; try { obj = JSON.parse(text); } catch { obj = null; }
-  const ts = new Date().toISOString();
-  console.log(`📥 ${ts} [${t}] (qos${pkt.qos})`);
-  if (obj) console.dir(obj, { depth: null, colors: true });
-  else console.log(text);
+  const data = JSON.parse(buf.toString());
+  
+  console.log(data);
+  io.emit("data:real", data)
 });
 
 client.on("reconnect", () => console.log("… reconnecting"));
